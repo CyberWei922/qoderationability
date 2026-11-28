@@ -2,13 +2,120 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="专注于 FPGA 开发与可综合 Verilog 代码生成的 AI Agent" />
-    <title>FPGAgent</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0c0e0c" />
+    <title>FPGAgent · 用自然语言编写并仿真数字电路的 AI Agent</title>
+    <meta
+      name="description"
+      content="FPGAgent 是 2026 Qoder 高校创造力大赛 StudyHack 作品：输入一句自然语言，AI 自动规划蓝图、生成可综合 Verilog，并在浏览器内完成 Lint、确定性自测、门级慢动作仿真与虚拟 FPGA 上板。无需开发板，无需安装 Vivado。"
+    />
+    <meta
+      name="keywords"
+      content="FPGAgent, FPGA, Verilog, AI Agent, 数字电路, 仿真, Qoder, StudyHack, 浏览器 RTL 引擎"
+    />
+    <link rel="canonical" href="https://fpgagent-6u1flr9gzif.qoder.zone/" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='2' fill='%23000000' stroke='%2376b900' stroke-width='2'/%3E%3Cpath d='M9 22v-8h8V9h6m-9 13h9v-5' fill='none' stroke='%2376b900' stroke-width='2.4' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="FPGAgent" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="FPGAgent · 用自然语言编写并仿真数字电路的 AI Agent" />
+    <meta
+      property="og:description"
+      content="输入一句自然语言，AI 自动规划蓝图、生成可综合 Verilog，并在浏览器内完成 Lint、确定性自测、门级慢动作仿真与虚拟 FPGA 上板。"
+    />
+    <meta property="og:url" content="https://fpgagent-6u1flr9gzif.qoder.zone/" />
+    <meta property="og:image" content="https://fpgagent-6u1flr9gzif.qoder.zone/og-cover.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="FPGAgent 产品首页：自然语言驱动的 FPGA 虚拟实验室" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FPGAgent · 用自然语言编写并仿真数字电路的 AI Agent" />
+    <meta
+      name="twitter:description"
+      content="输入一句自然语言，AI 自动规划蓝图、生成可综合 Verilog，并在浏览器内完成 Lint、确定性自测、门级慢动作仿真与虚拟 FPGA 上板。"
+    />
+    <meta name="twitter:image" content="https://fpgagent-6u1flr9gzif.qoder.zone/og-cover.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://fpgagent-6u1flr9gzif.qoder.zone/#website",
+            "url": "https://fpgagent-6u1flr9gzif.qoder.zone/",
+            "name": "FPGAgent",
+            "inLanguage": "zh-CN",
+            "description": "用自然语言编写并仿真数字电路的 AI Agent。"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://fpgagent-6u1flr9gzif.qoder.zone/#app",
+            "name": "FPGAgent",
+            "applicationCategory": "EducationalApplication",
+            "operatingSystem": "Web Browser",
+            "url": "https://fpgagent-6u1flr9gzif.qoder.zone/",
+            "inLanguage": ["zh-CN", "en"],
+            "description": "浏览器内的 FPGA 虚拟实验室：自然语言生成可综合 Verilog，完成静态 Lint、确定性自测、门级信号动画与虚拟开发板上板。",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "CNY"
+            },
+            "featureList": [
+              "自然语言生成可综合 Verilog",
+              "浏览器内纯 TypeScript RTL 解析与周期仿真",
+              "静态 Lint 与确定性自测断言",
+              "门级网表慢动作信号流动画",
+              "虚拟 FPGA 开发板、OLED 屏幕与蜂鸣器",
+              "七个免 API Key 的内置案例"
+            ],
+            "author": {
+              "@type": "Organization",
+              "name": "FPGAgent Team"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="max-width: 760px; margin: 0 auto; padding: 32px 20px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; line-height: 1.7; color: #1a1c18;">
+        <h1 style="font-size: 28px; margin-bottom: 8px;">FPGAgent · 用自然语言编写并仿真数字电路</h1>
+        <p style="font-size: 16px; color: #4a4f46;">
+          不用买开发板，不用安装 Vivado。输入一句自然语言，AI 智能体自动规划蓝图、编写可综合 Verilog，
+          在浏览器里完成确定性自测与修复，并用慢动作门级信号流动画展示电流如何逐级穿过逻辑门、点亮虚拟 FPGA 开发板。
+        </p>
+        <h2 style="font-size: 18px; margin-top: 24px;">五步开始</h2>
+        <ol style="padding-left: 20px;">
+          <li>打开工作台，点击「做一个智能交通灯」或「彩色 OLED 贪吃蛇」预设。</li>
+          <li>查看 AI 生成的蓝图、Verilog 与自测断言。</li>
+          <li>在门级画布观察信号逐级传播。</li>
+          <li>切换「屏幕」查看 OLED 输出，或在虚拟板卡上按按键、拨拨码。</li>
+          <li>继续用自然语言提修改需求，AI 会重新生成并验证。</li>
+        </ol>
+        <h2 style="font-size: 18px; margin-top: 24px;">可验证的技术事实</h2>
+        <ul style="padding-left: 20px;">
+          <li>284 条 Vitest 测试通过，3 条真实模型评测默认跳过。</li>
+          <li>纯 TypeScript 实现 Verilog 解析、Lint、门级网表与周期仿真，不依赖后端仿真器。</li>
+          <li>部署于 Qoder Sites，源码公开在 GitHub。</li>
+        </ul>
+        <p style="margin-top: 24px;">
+          <a href="https://github.com/CyberWei922/FPGAgent" style="color: #4d7c00;">GitHub 源码</a>
+          ·
+          <a href="/llms.txt" style="color: #4d7c00;">llms.txt</a>
+          ·
+          <a href="https://fpgagent-6u1flr9gzif.qoder.zone/" style="color: #4d7c00;">进入工作台</a>
+        </p>
+        <p style="font-size: 13px; color: #6b7066; margin-top: 32px;">
+          当前页面需要 JavaScript 才能运行仿真工作台。以上为项目静态说明。
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

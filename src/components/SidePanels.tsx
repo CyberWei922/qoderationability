@@ -3,8 +3,13 @@ import {
   Clock,
   Cpu,
   Download,
+  Languages,
   Monitor,
+  Moon,
   Play,
+  Plus,
+  SlidersHorizontal,
+  Sun,
   Trash2,
 } from 'lucide-react';
 import {
@@ -21,7 +26,9 @@ const PRESET_META: Record<string, { category: string; categoryEn: string; diffic
   'sequence-detector': { category: '串行检测', categoryEn: 'Serial', difficulty: '进阶', difficultyEn: 'Intermediate' },
   stopwatch: { category: '计数器', categoryEn: 'Counter', difficulty: '入门', difficultyEn: 'Beginner' },
   buzzer: { category: '仲裁锁存', categoryEn: 'Arbitration', difficulty: '入门', difficultyEn: 'Beginner' },
-  snake: { category: 'OLED 游戏', categoryEn: 'OLED Game', difficulty: '进阶', difficultyEn: 'Intermediate' },
+  snake: { category: '256 色游戏', categoryEn: '256-Color Game', difficulty: '进阶', difficultyEn: 'Intermediate' },
+  tetris: { category: '256 色游戏', categoryEn: '256-Color Game', difficulty: '挑战', difficultyEn: 'Advanced' },
+  'rgb-cube': { category: '256 色视觉', categoryEn: '256-Color Visual', difficulty: '入门', difficultyEn: 'Beginner' },
 };
 
 const PERIPHERAL_SHORT: Record<BoardPeripheralId, { zh: string; en: string }> = {
@@ -49,8 +56,8 @@ export function BoardPanel({
       <div className="drawer-intro">
         <p>
           {L(
-            '选择虚拟 FPGA 开发板配置：决定可用外设（含 16×8 单色 OLED 屏）以及 AI 生成电路时的硬件端口约定。',
-            'Select a virtual FPGA board profile to configure available peripherals (including 16×8 monochrome OLED) and AI hardware port prompts.',
+            '选择虚拟 FPGA 开发板配置：决定可用外设（含 16×8 256 色 OLED 屏）以及 AI 生成电路时的硬件端口约定。',
+            'Select a virtual FPGA board profile to configure available peripherals (including 16×8 256-color OLED) and AI hardware port prompts.',
           )}
         </p>
       </div>
@@ -248,17 +255,74 @@ export function HistoryPanel({
   onDownload,
   onDelete,
   onClear,
+  onNewChat,
+  resolvedTheme,
+  onToggleTheme,
+  onOpenSettings,
+  hasCustomApi,
 }: {
   entries: HistoryEntry[];
   onRestore: (entry: HistoryEntry) => void;
   onDownload: (entry: HistoryEntry) => void;
   onDelete: (id: string) => void;
   onClear: () => void;
+  onNewChat?: () => void;
+  resolvedTheme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
+  onOpenSettings?: () => void;
+  hasCustomApi?: boolean;
 }) {
-  const { locale, L } = useI18n();
+  const { locale, toggleLocale, L } = useI18n();
+
+  const mobileUtilityBar = (
+    <div className="mobile-utility-bar" aria-label={L('快捷操作与偏好设置', 'Quick actions & preferences')}>
+      {onNewChat && (
+        <button type="button" className="primary-button compact-btn mobile-util-new" onClick={onNewChat}>
+          <Plus size={14} />
+          <span>{L('新建对话', 'New Chat')}</span>
+        </button>
+      )}
+      <div className="mobile-util-group">
+        {onToggleTheme && resolvedTheme && (
+          <button
+            type="button"
+            className="outline-button compact-btn"
+            aria-label={resolvedTheme === 'dark' ? L('切换浅色模式', 'Switch to light mode') : L('切换深色模式', 'Switch to dark mode')}
+            onClick={onToggleTheme}
+          >
+            {resolvedTheme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            <span>{resolvedTheme === 'dark' ? L('浅色', 'Light') : L('深色', 'Dark')}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className="outline-button compact-btn"
+          aria-label={locale === 'zh' ? 'Switch to English' : '切换为中文'}
+          onClick={toggleLocale}
+        >
+          <Languages size={14} />
+          <span>{locale === 'zh' ? 'EN' : '中文'}</span>
+        </button>
+        {onOpenSettings && (
+          <button
+            type="button"
+            className="outline-button compact-btn mobile-util-settings"
+            aria-label={L('打开设置', 'Open settings')}
+            onClick={onOpenSettings}
+          >
+            <SlidersHorizontal size={14} />
+            <span>{L('设置', 'Settings')}</span>
+            {hasCustomApi && <span className="rail-badge-dot" aria-hidden="true" />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   if (entries.length === 0) {
     return (
       <div className="drawer-scroll">
+        {mobileUtilityBar}
         <div className="empty-box">
           <Clock size={22} />
           <p>{L('尚无本地电路记录', 'No local circuit history yet')}</p>
@@ -275,6 +339,7 @@ export function HistoryPanel({
 
   return (
     <div className="drawer-scroll">
+      {mobileUtilityBar}
       <div className="history-top-bar">
         <span>{L(`共 ${entries.length} 条本地快照`, `${entries.length} local snapshots`)}</span>
         <button type="button" className="text-link danger" onClick={onClear}>

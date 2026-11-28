@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# AI 可读的项目说明
+# https://fpgagent-6u1flr9gzif.qoder.zone/llms.txt
+
+Sitemap: https://fpgagent-6u1flr9gzif.qoder.zone/sitemap.xml

@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Check,
   ChevronRight,
   CircuitBoard,
@@ -9,10 +10,12 @@ import {
   FileText,
   Gamepad2,
   LayoutGrid,
+  MessageSquare,
   Monitor,
   PanelLeftClose,
   PanelLeftOpen,
   Radio,
+  X,
 } from 'lucide-react';
 import {
   useCallback,
@@ -33,7 +36,14 @@ import { NavRail, type RailTab } from './components/NavRail';
 import { ProductShowcase } from './components/ProductShowcase';
 import { ScreenView, type ScreenKeyLayout } from './components/ScreenView';
 import { BoardPanel, HistoryPanel, PresetsPanel } from './components/SidePanels';
-import { ClockControls, PromptComposer, SPEED_INTERVAL_MS, type ClockSpeed } from './components/TopBar';
+import {
+  ClockControls,
+  PromptComposer,
+  SPEED_INTERVAL_MS,
+  TURBO_TARGET_HZ,
+  formatClockFrequency,
+  type ClockSpeed,
+} from './components/TopBar';
 import { VirtualBoard } from './components/VirtualBoard';
 import { Waveform } from './components/Waveform';
 import { BlueprintView, VerifyView, VerilogView, type CodeStreamState } from './components/WorkbenchViews';
@@ -48,6 +58,11 @@ import {
   deriveVerilogFilename,
   downloadTextFile,
 } from './services/exportVerilog';
+import {
+  advanceScreenSync,
+  createScreenSyncState,
+  type ScreenSyncState,
+} from './services/screenSync';
 import {
   getLlmErrorText,
   localizePreset,
@@ -152,10 +167,10 @@ const QUICK_PROMPTS = [
   },
   {
     id: 'snake',
-    prompt: '做一个 OLED 贪吃蛇游戏',
-    promptEn: 'Build an OLED Snake game',
-    desc: '16×8 单色 OLED + WASD / 方向键控制',
-    descEn: '16×8 monochrome OLED + WASD / arrow keys',
+    prompt: '做一个彩色 OLED 贪吃蛇游戏',
+    promptEn: 'Build a color OLED Snake game',
+    desc: '16×8 256 色 OLED + WASD / 方向键控制',
+    descEn: '16×8 256-color OLED + WASD / arrow keys',
     Icon: Gamepad2,
   },
 ];
@@ -249,6 +264,7 @@ export default function App() {
   const [view, setView] = useState<AppView>(initialRoute.view);
   const [railTab, setRailTab] = useState<RailTab>(initialRoute.railTab);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileChatSheetOpen, setMobileChatSheetOpen] = useState(false);
   const [wbTab, setWbTab] = useState<WorkbenchTab>(initialRoute.wbTab);
   const routeRef = useRef<RouteState>(initialRoute);
 
@@ -275,7 +291,8 @@ export default function App() {
         }
       };
 
-      if (!options.skipTransition && crossingHomeAndWorkbench) {
+      const isMobileViewport = window.matchMedia('(max-width: 780px)').matches;
+      if (!options.skipTransition && crossingHomeAndWorkbench && !isMobileViewport) {
         startSpatialTransition(commit, next.view === 'workbench' ? 'enter-workbench' : 'return-home');
       } else {
         commit();
@@ -283,6 +300,17 @@ export default function App() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!mobileChatSheetOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !settingsOpen) {
+        setMobileChatSheetOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileChatSheetOpen, settingsOpen]);
 
   useEffect(() => {
     window.history.replaceState(routeRef.current, '', formatHashFromRoute(routeRef.current));
@@ -345,6 +373,8 @@ export default function App() {
   // Simulation State
   const [boardProfile, setBoardProfile] = useState<BoardProfile>(loadBoardProfile);
   const [screenKeyLayout, setScreenKeyLayout] = useState<ScreenKeyLayout>('dpad');
+  const [screenVsync, setScreenVsync] = useState(true);
+  const [displayScreenBuffer, setDisplayScreenBuffer] = useState<number[] | undefined>(undefined);
   const [circuitUsesScreen, setCircuitUsesScreen] = useState(false);
   const [netlist, setNetlist] = useState<NetlistGraph>();
   const [history, setHistory] = useState<SignalSample[]>([]);
@@ -358,14 +388,25 @@ export default function App() {
     saveBoardProfile(next);
   }
 
-  const simulation = useRef<RtlEngine['step'] | null>(null);
+  const simulation = useRef<{
+    step: RtlEngine['step'];
+    stepBatch: NonNullable<RtlEngine['stepBatch']>;
+  } | null>(null);
   const inputsRef = useRef(IDLE_INPUTS);
   const pendingKeys = useRef<{ pressed: number; inputs: BoardInputs }[]>([]);
   const pendingReset = useRef(false);
   const sampledKeys = useRef(0);
   const clockTimerRef = useRef<number | null>(null);
+  const clockRafRef = useRef<number | null>(null);
+  const lastRunSpeedRef = useRef<Exclude<ClockSpeed, 'step'>>(loadAppPreferences().defaultClockSpeed);
+  const screenSyncRef = useRef<ScreenSyncState>(createScreenSyncState());
+  const screenVsyncRef = useRef(true);
+  screenVsyncRef.current = screenVsync;
   const clockStateRef = useRef({ compiled: false, running: true, speed: 'realtime' as ClockSpeed });
   clockStateRef.current = { compiled, running, speed };
+  if (speed !== 'step') {
+    lastRunSpeedRef.current = speed;
+  }
   const abortRef = useRef<AbortController | null>(null);
   const applied = useRef<{ source: string; title?: string; version: number } | undefined>(undefined);
 
@@ -525,37 +566,128 @@ export default function App() {
     saveAppPreferences(next);
   }
 
-  const tick = useCallback(() => {
-    if (!simulation.current) return;
-    const current = inputsRef.current;
-    const pending = pendingKeys.current[0];
-    let sampled = current;
-    if (pendingReset.current || current.rst_n === 0) {
-      sampled = { ...current, key: 0, rst_n: 0 };
-      pendingReset.current = false;
-    } else if (pending) {
-      if (sampledKeys.current & pending.pressed) {
-        sampled = { ...pending.inputs, key: pending.inputs.key & ~pending.pressed, rst_n: 1 };
-      } else {
-        sampled = { ...pending.inputs, rst_n: 1 };
-        pendingKeys.current.shift();
-      }
-    }
-    sampledKeys.current = sampled.key;
-    const next = simulation.current(sampled);
-    setNetlist(next.netlist);
-    setHistory((samples) => [...samples.slice(-(HISTORY_LIMIT - 1)), next.sample]);
-  }, []);
+  const stepCycles = useCallback(
+    (requestedCycles: number, options?: { forceImmediateDisplay?: boolean }) => {
+      const sim = simulation.current;
+      if (!sim) return;
+      const targetCount = Math.max(1, Math.min(64, Math.floor(requestedCycles)));
+      const current = inputsRef.current;
+      const batchSamples: SignalSample[] = [];
+      let lastResult: { sample: SignalSample; netlist: NetlistGraph } | null = null;
+      let remaining = targetCount;
 
-  const restartClockTimer = useCallback(() => {
+      const nextEdgeInput = (): BoardInputs | null => {
+        const pending = pendingKeys.current[0];
+        if (pendingReset.current || current.rst_n === 0) {
+          const sampled: BoardInputs = { ...current, key: 0, rst_n: 0 };
+          pendingReset.current = false;
+          sampledKeys.current = sampled.key;
+          return sampled;
+        }
+        if (pending) {
+          let sampled: BoardInputs;
+          if (sampledKeys.current & pending.pressed) {
+            sampled = { ...pending.inputs, key: pending.inputs.key & ~pending.pressed, rst_n: 1 };
+          } else {
+            sampled = { ...pending.inputs, rst_n: 1 };
+            pendingKeys.current.shift();
+          }
+          sampledKeys.current = sampled.key;
+          return sampled;
+        }
+        return null;
+      };
+
+      while (remaining > 0) {
+        const edgeInput = nextEdgeInput();
+        if (!edgeInput) break;
+        const res = sim.step(edgeInput);
+        batchSamples.push(res.sample);
+        lastResult = res;
+        remaining -= 1;
+      }
+
+      if (remaining > 0) {
+        sampledKeys.current = current.key;
+        if (remaining === 1) {
+          const res = sim.step(current);
+          batchSamples.push(res.sample);
+          lastResult = res;
+        } else {
+          const res = sim.stepBatch(current, remaining);
+          if (res.waveformDelta && res.waveformDelta.length > 0) {
+            batchSamples.push(...res.waveformDelta);
+          } else {
+            batchSamples.push(res.sample);
+          }
+          lastResult = { sample: res.sample, netlist: res.netlist };
+        }
+      }
+
+      if (!lastResult) return;
+
+      const currentSpeed = clockStateRef.current.speed;
+      const syncEnabled =
+        !options?.forceImmediateDisplay && screenVsyncRef.current && currentSpeed !== 'step';
+      const maxHoldCycles = currentSpeed === 'turbo' ? 128 : 12;
+      const syncedBuffer = advanceScreenSync(screenSyncRef.current, batchSamples, {
+        enabled: syncEnabled,
+        maxHoldCycles,
+      });
+
+      setNetlist(lastResult.netlist);
+      setHistory((samples) => [...samples.slice(-(HISTORY_LIMIT - 1)), lastResult.sample]);
+      setDisplayScreenBuffer(syncedBuffer ?? lastResult.sample.screenBuffer);
+    },
+    [],
+  );
+
+  const tick = useCallback(() => {
+    stepCycles(1);
+  }, [stepCycles]);
+
+  const stopClockLoop = useCallback(() => {
     if (clockTimerRef.current !== null) {
       window.clearInterval(clockTimerRef.current);
       clockTimerRef.current = null;
     }
+    if (clockRafRef.current !== null) {
+      window.cancelAnimationFrame(clockRafRef.current);
+      clockRafRef.current = null;
+    }
+  }, []);
+
+  const restartClockTimer = useCallback(() => {
+    stopClockLoop();
     const { compiled: isCompiled, running: isRunning, speed: currentSpeed } = clockStateRef.current;
     if (!isCompiled || !isRunning || currentSpeed === 'step') return;
+    if (currentSpeed === 'turbo') {
+      let lastTime = performance.now();
+      let carryCycles = 0;
+      const frame = (now: number) => {
+        if (
+          !clockStateRef.current.compiled ||
+          !clockStateRef.current.running ||
+          clockStateRef.current.speed !== 'turbo'
+        ) {
+          clockRafRef.current = null;
+          return;
+        }
+        const dt = Math.min(50, Math.max(0, now - lastTime));
+        lastTime = now;
+        carryCycles += (dt * TURBO_TARGET_HZ) / 1000;
+        const steps = Math.floor(carryCycles);
+        if (steps >= 1) {
+          carryCycles -= steps;
+          stepCycles(Math.min(steps, 64));
+        }
+        clockRafRef.current = window.requestAnimationFrame(frame);
+      };
+      clockRafRef.current = window.requestAnimationFrame(frame);
+      return;
+    }
     clockTimerRef.current = window.setInterval(tick, SPEED_INTERVAL_MS[currentSpeed]);
-  }, [tick]);
+  }, [stepCycles, stopClockLoop, tick]);
 
   // Board inputs & simulation loop
   function changeInputs(next: BoardInputs) {
@@ -571,11 +703,15 @@ export default function App() {
 
     const { compiled: isCompiled, running: isRunning, speed: currentSpeed } = clockStateRef.current;
     if (isCompiled && isRunning && currentSpeed !== 'step' && (resetPressed || pressed !== 0)) {
-      if (pressed !== 0 && (sampledKeys.current & pressed)) {
+      if (currentSpeed === 'turbo') {
+        stepCycles(16);
+      } else {
+        if (pressed !== 0 && (sampledKeys.current & pressed)) {
+          tick();
+        }
         tick();
+        restartClockTimer();
       }
-      tick();
-      restartClockTimer();
     }
   }
 
@@ -590,6 +726,8 @@ export default function App() {
   function clearCircuit() {
     simulation.current = null;
     applied.current = undefined;
+    screenSyncRef.current = createScreenSyncState();
+    setDisplayScreenBuffer(undefined);
     setCompiled(false);
     setCircuitUsesScreen(false);
     setBlueprint(undefined);
@@ -625,12 +763,26 @@ export default function App() {
     const usesScreen = Boolean(result.metadata?.usedOutputs.includes('screen'));
     engine.reset();
     const initial = engine.step({ ...IDLE_INPUTS, rst_n: 0 });
-    simulation.current = (current) => engine.step(current);
+    simulation.current = {
+      step: (current) => engine.step(current),
+      stepBatch: (current, steps) =>
+        engine.stepBatch ? engine.stepBatch(current, steps) : { ...engine.step(current) },
+    };
+    const syncState = createScreenSyncState();
+    advanceScreenSync(syncState, [initial.sample], { enabled: true, maxHoldCycles: 128 });
+    screenSyncRef.current = syncState;
+    setDisplayScreenBuffer(syncState.frontBuffer ?? initial.sample.screenBuffer);
+
     const ver = options.nextVersion ?? Math.max(1, version);
     applied.current = { source, title, version: ver };
     setActivePresetId(presetId);
     setCircuitUsesScreen(usesScreen);
-    setSpeed((prev) => (usesScreen ? 'fast' : prev === 'fast' ? prefs.defaultClockSpeed : prev));
+    const preset = presetId ? runtime.presets.find((item) => item.id === presetId) : undefined;
+    setSpeed((prev) => {
+      if (preset?.recommendedClockSpeed) return preset.recommendedClockSpeed;
+      if (usesScreen) return prev === 'turbo' ? 'turbo' : 'fast';
+      return prev === 'fast' || prev === 'turbo' ? prefs.defaultClockSpeed : prev;
+    });
     setRunning(true);
     resetInputs();
     setHistory([initial.sample]);
@@ -641,13 +793,8 @@ export default function App() {
 
   useEffect(() => {
     restartClockTimer();
-    return () => {
-      if (clockTimerRef.current !== null) {
-        window.clearInterval(clockTimerRef.current);
-        clockTimerRef.current = null;
-      }
-    };
-  }, [compiled, running, speed, restartClockTimer]);
+    return stopClockLoop;
+  }, [compiled, running, speed, restartClockTimer, stopClockLoop]);
 
   useEffect(
     () => () => {
@@ -677,6 +824,7 @@ export default function App() {
     setVersion(0);
     setActivePresetId(undefined);
     setSidebarCollapsed(false);
+    setMobileChatSheetOpen(false);
     setSpeed(prefs.defaultClockSpeed);
     setRunning(true);
     clearCircuit();
@@ -685,6 +833,7 @@ export default function App() {
 
   function openShowcase() {
     setSidebarCollapsed(false);
+    setMobileChatSheetOpen(false);
     navigateTo({ view: 'showcase', railTab: 'chat' });
   }
 
@@ -770,6 +919,7 @@ export default function App() {
       navigateTo({ view: 'workbench', railTab: 'chat', wbTab: 'blueprint' }, { skipTransition: true });
       setRecommendedTab('blueprint');
       setSidebarCollapsed(false);
+      setMobileChatSheetOpen(true);
       setHighlightLine(undefined);
       setOutcome('busy');
       setTraces([]);
@@ -793,7 +943,8 @@ export default function App() {
       ]);
     };
 
-    if (crossingFromHome) {
+    const isMobileViewport = window.matchMedia('(max-width: 780px)').matches;
+    if (crossingFromHome && !isMobileViewport) {
       await startSpatialTransition(enterRunState, 'enter-workbench');
       if (abortRef.current !== controller || controller.signal.aborted) return;
     } else {
@@ -1137,6 +1288,7 @@ export default function App() {
         if (!active()) return;
 
         setOutcome('ready');
+        setMobileChatSheetOpen(false);
         updateAssistantTurn(aiTurnId, (t) => ({
           ...t,
           status: 'done',
@@ -1377,6 +1529,7 @@ export default function App() {
         if (!active()) return;
 
         setOutcome('ready');
+        setMobileChatSheetOpen(false);
         updateAssistantTurn(aiTurnId, (t) => ({
           ...t,
           status: 'done',
@@ -1493,6 +1646,7 @@ export default function App() {
         modelUsed: entry.modelUsed,
       },
     ]);
+    setMobileChatSheetOpen(false);
     navigateTo({ view: 'workbench', railTab: 'chat', wbTab: restored.usesScreen ? 'screen' : 'canvas' });
   }
 
@@ -1527,21 +1681,35 @@ export default function App() {
   function stepOnce() {
     setSpeed('step');
     setRunning(false);
-    tick();
+    stepCycles(1, { forceImmediateDisplay: true });
   }
 
   function toggleRun() {
     if (speed === 'step') {
-      setSpeed(circuitUsesScreen ? 'fast' : 'realtime');
+      setSpeed(lastRunSpeedRef.current);
       setRunning(true);
     } else {
       setRunning((value) => !value);
     }
   }
 
+  function handleToggleScreenVsync() {
+    setScreenVsync((prev) => {
+      const next = !prev;
+      if (!next && history.at(-1)?.screenBuffer) {
+        const raw = history.at(-1)!.screenBuffer!;
+        screenSyncRef.current.frontBuffer = raw;
+        screenSyncRef.current.dirtyStreak = 0;
+        setDisplayScreenBuffer(raw);
+      }
+      return next;
+    });
+  }
+
   function jumpToVerilogLine(line?: number) {
     setHighlightLine(line);
-    navigateTo({ view: 'workbench', wbTab: 'verilog' });
+    setMobileChatSheetOpen(false);
+    navigateTo({ view: 'workbench', railTab: 'chat', wbTab: 'verilog' });
   }
 
   const busy = outcome === 'busy';
@@ -1580,16 +1748,34 @@ export default function App() {
   return (
     <div
       className="app-frame"
+      data-view={view}
+      data-rail-tab={railTab}
       data-has-session={hasSession}
       data-sidebar-collapsed={sidebarCollapsed}
+      data-mobile-chat-open={mobileChatSheetOpen}
       data-resizing={resizingPane}
       style={{ '--left-pane-width': `${leftPaneWidth}px` } as CSSProperties}
     >
+      {view !== 'showcase' && (
+        <header className="mobile-topbar">
+          <button
+            type="button"
+            className="mobile-logo-btn"
+            onClick={openShowcase}
+            title={L('FPGAgent · 产品介绍', 'FPGAgent · Product Overview')}
+            aria-label={L('FPGAgent · 点击进入产品介绍页', 'FPGAgent · Open product overview')}
+          >
+            <BrandWordmark className="mobile-topbar-logo" />
+          </button>
+        </header>
+      )}
+
       <NavRail
         activeTab={railTab}
         isShowcase={view === 'showcase'}
         onSelectTab={(tab) => {
           setSidebarCollapsed(false);
+          setMobileChatSheetOpen(false);
           if (tab === 'chat') {
             if (turns.length > 0 || compiled) {
               navigateTo({ view: 'workbench', railTab: 'chat' });
@@ -1735,11 +1921,20 @@ export default function App() {
         </main>
       ) : (
         <>
+          {railTab === 'chat' && mobileChatSheetOpen && (
+            <div
+              className="mobile-sheet-backdrop"
+              aria-hidden="true"
+              onClick={() => setMobileChatSheetOpen(false)}
+            />
+          )}
+
           <section
             className="left-pane"
             aria-label={leftHeaderTitle}
             aria-hidden={sidebarCollapsed || undefined}
           >
+              {railTab === 'chat' && <div className="mobile-sheet-handle" aria-hidden="true" />}
               <header className="pane-header">
                 <div className="pane-title-wrap">
                   <h1 className="pane-title" title={leftHeaderTitle}>
@@ -1749,13 +1944,24 @@ export default function App() {
                 <div className="pane-header-right">
                   <button
                     type="button"
-                    className="icon-button"
+                    className="icon-button desktop-collapse-btn"
                     title={L('收起左侧栏', 'Collapse sidebar')}
                     aria-label={L('收起左侧栏', 'Collapse sidebar')}
                     onClick={() => setSidebarCollapsed(true)}
                   >
                     <PanelLeftClose size={16} />
                   </button>
+                  {railTab === 'chat' && (
+                    <button
+                      type="button"
+                      className="icon-button mobile-sheet-close"
+                      title={L('关闭对话', 'Close chat')}
+                      aria-label={L('关闭对话', 'Close chat')}
+                      onClick={() => setMobileChatSheetOpen(false)}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
               </header>
 
@@ -1765,11 +1971,18 @@ export default function App() {
                     turns={turns}
                     onOpenCode={(src) => {
                       if (src) setCode(src);
+                      setMobileChatSheetOpen(false);
                       handleManualTabClick('verilog');
                     }}
                     onDownloadCode={(filename, src) => handleExportVerilog(filename, src)}
-                    onOpenVerify={() => handleManualTabClick('verify')}
-                    onOpenSettings={() => openSettings('api')}
+                    onOpenVerify={() => {
+                      setMobileChatSheetOpen(false);
+                      handleManualTabClick('verify');
+                    }}
+                    onOpenSettings={() => {
+                      setMobileChatSheetOpen(false);
+                      openSettings('api');
+                    }}
                     onJumpToLine={jumpToVerilogLine}
                   />
                   <div className="composer-dock">
@@ -1801,7 +2014,10 @@ export default function App() {
                 <BoardPanel
                   profile={boardProfile}
                   onSelectProfile={handleSelectBoardProfile}
-                  onOpenScreenTab={() => handleManualTabClick('screen')}
+                  onOpenScreenTab={() => {
+                    setMobileChatSheetOpen(false);
+                    navigateTo({ view: 'workbench', railTab: 'chat', wbTab: 'screen' });
+                  }}
                 />
               )}
 
@@ -1824,9 +2040,31 @@ export default function App() {
                     clearHistoryEntries();
                     setHistoryEntries([]);
                   }}
+                  onNewChat={newChat}
+                  resolvedTheme={resolvedTheme}
+                  onToggleTheme={toggleLightDark}
+                  onOpenSettings={() => openSettings('api')}
+                  hasCustomApi={Boolean(api)}
                 />
               )}
           </section>
+
+          {railTab === 'chat' && !mobileChatSheetOpen && (
+            <button
+              type="button"
+              className={`mobile-chat-fab${busy ? ' busy' : ''}`}
+              aria-label={L('展开对话与追问', 'Open chat drawer')}
+              aria-expanded={false}
+              onClick={() => setMobileChatSheetOpen(true)}
+            >
+              <MessageSquare size={20} strokeWidth={2.1} />
+              {busy ? (
+                <span className="mobile-fab-dot" aria-hidden="true" />
+              ) : wbTitleVersion > 0 ? (
+                <span className="mobile-fab-badge mono">V{wbTitleVersion}</span>
+              ) : null}
+            </button>
+          )}
 
           <div
             className="pane-resizer"
@@ -1920,7 +2158,7 @@ export default function App() {
                     type="button"
                     role="tab"
                     aria-selected={wbTab === 'verify'}
-                    className={wbTab === 'verify' ? 'active' : undefined}
+                    className={`wb-tab-verify${wbTab === 'verify' ? ' active' : ''}`}
                     onClick={() => handleManualTabClick('verify')}
                   >
                     <ClipboardCheck size={13.5} className="wb-tab-icon" aria-hidden="true" />
@@ -1969,6 +2207,8 @@ export default function App() {
                   type="button"
                   className="outline-button compact-btn"
                   disabled={!code}
+                  title={L('导出 .v', 'Export .v')}
+                  aria-label={L('导出 Verilog 文件', 'Export Verilog file')}
                   onClick={() => handleExportVerilog()}
                 >
                   <Download size={14} /> {L('导出 .v', 'Export .v')}
@@ -2007,7 +2247,11 @@ export default function App() {
                     <section className="instrument-section">
                       <div className="section-heading">
                         <h2>{L('虚拟板卡', 'Virtual Board')}</h2>
-                        {latest && <span className="instrument-meta mono">CLK ↑ {latest.cycle}</span>}
+                        {latest && (
+                          <span className="instrument-meta mono">
+                            {formatClockFrequency(speed)} · CLK ↑ {latest.cycle}
+                          </span>
+                        )}
                       </div>
                       <VirtualBoard
                         inputs={inputs}
@@ -2040,7 +2284,7 @@ export default function App() {
 
               {wbTab === 'screen' && (
                 <ScreenView
-                  screenBuffer={latest?.screenBuffer}
+                  screenBuffer={displayScreenBuffer ?? latest?.screenBuffer}
                   hasScreenOutput={circuitUsesScreen || Boolean(latest?.screenBuffer)}
                   compiled={compiled}
                   filename={code ? activeFilename : undefined}
@@ -2058,11 +2302,18 @@ export default function App() {
                   onStep={stepOnce}
                   keyLayout={screenKeyLayout}
                   onKeyLayoutChange={setScreenKeyLayout}
+                  vsync={screenVsync}
+                  onToggleVsync={handleToggleScreenVsync}
                 />
               )}
 
               {wbTab === 'blueprint' && (
-                <BlueprintView blueprint={blueprint} planning={planningBlueprint} />
+                <BlueprintView
+                  blueprint={blueprint}
+                  planning={planningBlueprint}
+                  selfTest={selfTest}
+                  onOpenVerify={() => handleManualTabClick('verify')}
+                />
               )}
 
               {wbTab === 'verilog' && (
@@ -2081,13 +2332,33 @@ export default function App() {
               )}
 
               {wbTab === 'verify' && (
-                <VerifyView
-                  selfTest={selfTest}
-                  issues={issues}
-                  traces={traces}
-                  ledFocus={false}
-                  onJumpToLine={jumpToVerilogLine}
-                />
+                <div className="wb-verify-wrap">
+                  <div className="mobile-verify-back-bar">
+                    <button
+                      type="button"
+                      className="outline-button compact-btn"
+                      onClick={() => handleManualTabClick(circuitUsesScreen ? 'screen' : 'canvas')}
+                    >
+                      <ArrowLeft size={14} />
+                      <span>{L('返回仿真视图', 'Back to Simulation')}</span>
+                    </button>
+                    {selfTest && (
+                      <span className={`mono-meta ${selfTest.passed ? 'ok' : ''}`}>
+                        {L(
+                          `自测 ${selfTest.passedChecks}/${selfTest.totalChecks}`,
+                          `Self-Test ${selfTest.passedChecks}/${selfTest.totalChecks}`,
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <VerifyView
+                    selfTest={selfTest}
+                    issues={issues}
+                    traces={traces}
+                    ledFocus={false}
+                    onJumpToLine={jumpToVerilogLine}
+                  />
+                </div>
               )}
             </div>
           </main>

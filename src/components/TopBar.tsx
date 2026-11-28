@@ -6,19 +6,37 @@ import {
   Settings2,
   SkipForward,
   Square,
+  Zap,
 } from 'lucide-react';
 import { useRef, useState, type CSSProperties } from 'react';
 import { useI18n } from '../services/i18n';
 import type { LLMModelOption } from '../types/contracts';
 import { CustomModelSelect } from './CustomSelect';
 
-export type ClockSpeed = 'fast' | 'realtime' | 'slow' | 'step';
+export type ClockSpeed = 'turbo' | 'fast' | 'realtime' | 'slow' | 'step';
 
-export const SPEED_INTERVAL_MS: Record<Exclude<ClockSpeed, 'step'>, number> = {
+export const TURBO_TARGET_HZ = 1000;
+
+export const SPEED_INTERVAL_MS: Record<Exclude<ClockSpeed, 'step' | 'turbo'>, number> = {
   fast: 65,
   realtime: 100,
   slow: 500,
 };
+
+export function formatClockFrequency(speed: ClockSpeed): string {
+  switch (speed) {
+    case 'turbo':
+      return '1.0 kHz';
+    case 'fast':
+      return '15 Hz';
+    case 'realtime':
+      return '10 Hz';
+    case 'slow':
+      return '2 Hz';
+    case 'step':
+      return 'STEP';
+  }
+}
 
 export function PromptComposer({
   onSend,
@@ -208,15 +226,28 @@ export function ClockControls({
     <div className="clock-controls" role="group" aria-label={L('时钟控制', 'Clock controls')}>
       <div className="clock-modes">
         {showFast && (
-          <button
-            type="button"
-            disabled={disabled}
-            aria-pressed={speed === 'fast'}
-            title={L('高速（65ms/拍）', 'Fast (65ms/cycle)')}
-            onClick={() => onSpeed('fast')}
-          >
-            {L('高速', 'Fast')}
-          </button>
+          <>
+            <button
+              type="button"
+              className="clock-turbo-btn"
+              disabled={disabled}
+              aria-pressed={speed === 'turbo'}
+              title={L('高频性能模式（1 kHz · 60fps 批量步进，零拖影）', 'Turbo Performance (1 kHz · 60fps batch stepping)')}
+              onClick={() => onSpeed('turbo')}
+            >
+              <Zap size={11} />
+              <span>1 kHz</span>
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              aria-pressed={speed === 'fast'}
+              title={L('高速（65ms/拍 · 15 Hz）', 'Fast (65ms/cycle · 15 Hz)')}
+              onClick={() => onSpeed('fast')}
+            >
+              {L('高速', '15 Hz')}
+            </button>
+          </>
         )}
         <button
           type="button"

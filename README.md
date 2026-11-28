@@ -19,7 +19,7 @@
 
 ## 三人团队分工速览（第三轮 · V3 契约）
 
-> 第二轮最终版（`baf3004`，217/217 项单测通过）与 V3 冻结契约均已合入 `main`。第三轮围绕 **16×8 字符/图块 OLED 大屏 + 蜂鸣器 + 左侧板卡配置 + 引擎寄存器数组与高速步进 + 每日 6 次按项目扣次限流** 展开三线并行升级。
+> 第二轮最终版（`baf3004`）与 V3 冻结契约均已合入 `main`；当前第三轮已达成 **284 条测试通过**（3 条真实模型评测默认跳过）。第三轮围绕 **16×8 字符/图块 OLED 大屏 + 蜂鸣器 + 左侧板卡配置 + 引擎寄存器数组与高速步进 + 每日 6 次按项目扣次限流** 展开三线并行升级。
 
 | 角色 | 负责范围 | 核心目录 | 接口与验收 |
 | --- | --- | --- | --- |
@@ -42,7 +42,7 @@ npm test
 npm run build
 ```
 
-FPGAgent 从对话首页开始。可以输入电路需求，也可以点击交通灯或四位密码锁演示。进入仿真后可继续提需求，点击左侧「蓝图」查看电路资料。
+FPGAgent 从对话首页开始。可以输入电路需求，也可以点击交通灯或彩色 OLED 贪吃蛇演示。进入仿真后可继续提需求，点击左侧「蓝图」查看电路资料。
 
 首页的两条预设提示词演示生成流程，并使用真实 RTL 引擎编译、验算与运行对应电路，无需 API Key。自由输入和继续修改走真实 Harness。要调用模型，可在「API 设置」保存支持浏览器跨域请求及 `json_object` 响应格式的 OpenAI 兼容服务地址、模型名和 Key。
 
@@ -63,14 +63,14 @@ FPGAgent/
 ├── src/
 │   ├── types/              # 【队长冻结】contracts.ts 统一数据接口
 │   ├── engine/             # 【队友 1】Verilog 解析、周期仿真、门级网表、Lint、确定性自测
-│   ├── agent/              # 【队友 2】Harness 闭环、Prompt/Schema、预置案例、故障诊所
+│   ├── agent/              # 【队友 2】Harness 闭环、Prompt/Schema、预置案例、故障题库
 │   ├── services/           # 【队长】LLMClient 实现与 BYOK 配置
 │   ├── components/         # 【队长】TopBar、AgentPanel、GateCanvas、VirtualBoard、Waveform
 │   └── App.tsx             # 【队长】三栏工作台主入口
 ├── functions/
 │   └── index.ts            # 【队长】Qoder Sites Edge Function 入口
 └── tests/
-    ├── engine.test.ts      # 【队友 1】50+ 条引擎与 Lint 回归测试
+    ├── engine.test.ts      # 【队友 1】178 条引擎与 Lint 回归测试
     └── agent.test.ts       # 【队友 2】Prompt JSON 稳定性与闭环验收测试
 ```
 

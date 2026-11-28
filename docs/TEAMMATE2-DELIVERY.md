@@ -2,8 +2,9 @@
 
 > 分支：`feat/agent`（只推分支，不建 PR）
 > 依赖契约：[src/types/contracts.ts](../src/types/contracts.ts)
-> 模块验收：`npm run test:agent`（35 个用例，全部使用替身 LLM / 引擎，不消耗 Token）
+> 模块验收：`npm run test:agent`（36 个用例，全部使用替身 LLM / 引擎，不消耗 Token）
 > 真实模型评测：见 [REAL_MODEL_EVAL.md](REAL_MODEL_EVAL.md)（需要 `.env.local` 测试 Key）
+> 状态说明：本文记录 V2 交付内容；V3 已在此基础上升级，当前全量测试为 **284 通过 / 3 跳过**，支持 1D/2D 定长数组、OLED 与蜂鸣器。
 
 ## 1. 交付物清单
 
@@ -61,11 +62,11 @@
 - 队友 2：Prompt 与 JSON 契约、规划生成修复闭环、预置案例与故障题库、参赛文案
 
 **Known Limitations**（如实声明）：
-- 仅支持教学级可综合 Verilog 子集（不允许 for/数组/模块实例化/除法等），复杂设计会触发 Lint 或修复失败
+- 支持教学级可综合 Verilog 子集（含 1D/2D 定长数组与有界 for 初始化；不支持模块实例化、除法等），复杂设计仍可能触发 Lint 或修复失败
 - 自测向量由模型生成，覆盖不全时"通过"不代表功能完全正确
-- 免 Key 体验按 IP 每日限次（默认 8 次），计数在函数冷启动后重置
-- 故障诊所目前提供算法注入的 7 个关卡，LLM 随机注入需要模型额度
-- 状态图目前展示 Mermaid 源码（渲染待接入）；BYOK 要求接口支持浏览器跨域调用
+- 免 Key 体验按浏览器/IP 每日 6 次，并按项目 `runId` 扣次
+- 故障题库保留在代码中，当前主工作台未提供独立入口；LLM 随机注入需要模型额度
+- BYOK 要求接口支持浏览器跨域调用；状态图已用内置 FSM 渲染器展示
 
 **Qoder 过程截图清单**（M4 补齐）：
 - 三线并行开发：契约冻结、`npm test` 全绿、合并冲突解决
@@ -97,8 +98,8 @@
 ## 7. 本地复现
 
 ```bash
-npm run test:agent      # 35 个 Agent 单元测试
+npm run test:agent      # 36 个 Agent 单元测试
 npm run typecheck       # 严格类型检查
-npm test                # 全量 122 通过（无 Key 时真实模型评测 3 例跳过）
+npm test                # 当前全量 284 通过 / 3 跳过（无 Key 时真实模型评测自动跳过）
 npm run build           # 生产构建
 ```

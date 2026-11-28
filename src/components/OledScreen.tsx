@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { decodeScreenCell } from '../engine';
-import { resolveScreenColorHex, subscribePaletteChange } from '../services/screenPalette';
+import { paletteSnapshot, subscribePaletteChange } from '../services/screenPalette';
 import { BOARD_SCREEN_COLS, BOARD_SCREEN_ROWS } from '../types/contracts';
 
 export type OledTint = 'white' | 'green' | 'ice';
@@ -161,11 +161,44 @@ const TILE_FONT_8X8: Record<number, readonly number[]> = {
   0x94: [0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f], // Right half block
 };
 
+// 2x2 solid 4x4-pixel quadrant sub-blocks (0xA0..0xAF, low 4 bits = {TL, TR, BL, BR})
+const QUADRANT_FONT_8X8: readonly (readonly number[] | null)[] = Array.from({ length: 16 }, (_, mask) => {
+  if (mask === 0) return null;
+  const top = ((mask & 0x08) ? 0xf0 : 0x00) | ((mask & 0x04) ? 0x0f : 0x00);
+  const bot = ((mask & 0x02) ? 0xf0 : 0x00) | ((mask & 0x01) ? 0x0f : 0x00);
+  return [top, top, top, top, bot, bot, bot, bot];
+});
+
+// 2x2 per-quadrant independent-color sub-blocks (0xB0..0xBF):
+// 12-bit payload ((color << 4) | (code & 0x0f)) encodes 4 x 3-bit color IDs {TL, TR, BL, BR} (0 = off, 1..7 = palette)
+export const QUADRANT_COLOR_PALETTE: readonly number[] = [0, 51, 226, 129, 208, 33, 46, 196];
+const QUADRANT_OFFSETS: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [4, 0],
+  [0, 4],
+  [4, 4],
+];
+
+export function decodeColorQuadrants(packed: number): [number, number, number, number] | null {
+  const code = packed & 0xff;
+  if (code < 0xb0 || code > 0xbf) return null;
+  const color = (packed >>> 8) & 0xff;
+  const payload = (color << 4) | (code & 0x0f);
+  if (payload === 0) return null;
+  return [
+    (payload >>> 9) & 0x7,
+    (payload >>> 6) & 0x7,
+    (payload >>> 3) & 0x7,
+    payload & 0x7,
+  ];
+}
+
 export function resolveGlyphBitmap(code: number): readonly number[] | null {
   const byte = code & 0xff;
   if (byte === 0) return null;
   if (byte >= 0x20 && byte <= 0x7e) return ASCII_FONT_8X8[byte] ?? null;
   if (byte >= 0x80 && byte <= 0x9f) return TILE_FONT_8X8[byte] ?? TILE_FONT_8X8[0x80];
+  if (byte >= 0xa0 && byte <= 0xaf) return QUADRANT_FONT_8X8[byte - 0xa0];
   return null;
 }
 
@@ -174,6 +207,31 @@ const PIXEL_PITCH = 4;
 const PIXEL_SIZE = 3;
 const CANVAS_W = BOARD_SCREEN_COLS * 8 * PIXEL_PITCH;
 const CANVAS_H = BOARD_SCREEN_ROWS * 8 * PIXEL_PITCH;
+
+const substrateCache = new Map<OledTint, HTMLCanvasElement>();
+
+function getSubstrateCanvas(tint: OledTint): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') return null;
+  const cached = substrateCache.get(tint);
+  if (cached) return cached;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = CANVAS_W;
+  offscreen.height = CANVAS_H;
+  const ctx = offscreen.getContext('2d');
+  if (!ctx) return null;
+  const palette = OLED_TINT_CONFIG[tint];
+  ctx.fillStyle = palette.bg;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  ctx.fillStyle = palette.off;
+  for (let py = 0; py < BOARD_SCREEN_ROWS * 8; py++) {
+    const yPos = py * PIXEL_PITCH;
+    for (let px = 0; px < BOARD_SCREEN_COLS * 8; px++) {
+      ctx.fillRect(px * PIXEL_PITCH, yPos, PIXEL_SIZE, PIXEL_SIZE);
+    }
+  }
+  substrateCache.set(tint, offscreen);
+  return offscreen;
+}
 
 function hexToRgba(hex: string, alpha: number): string {
   const value = hex.replace('#', '');
@@ -186,11 +244,15 @@ function hexToRgba(hex: string, alpha: number): string {
 function resolveCellVisual(
   packed: number,
   tint: OledTint,
+  paletteHex: readonly string[],
+  paletteGlow: readonly string[],
 ): { lit: string; glow: string } {
   const { color } = decodeScreenCell(packed);
   if (color > 0) {
-    const hex = resolveScreenColorHex(color);
-    return { lit: hex, glow: hexToRgba(hex, 0.3) };
+    return {
+      lit: paletteHex[color] ?? paletteHex[0],
+      glow: paletteGlow[color] ?? paletteGlow[0],
+    };
   }
   const palette = OLED_TINT_CONFIG[tint];
   return { lit: palette.lit, glow: palette.glow };
@@ -210,36 +272,62 @@ export function OledScreen({
 
   useEffect(() => subscribePaletteChange(() => setPaletteVersion((v) => v + 1)), []);
 
+  const resolvedPalette = useMemo(() => {
+    const hex = paletteSnapshot();
+    const glow = hex.map((c) => hexToRgba(c, 0.3));
+    return { hex, glow };
+  }, [paletteVersion]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const palette = OLED_TINT_CONFIG[tint];
-    ctx.fillStyle = palette.bg;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-    // Subtle unlit OLED dot matrix substrate
-    ctx.fillStyle = palette.off;
-    for (let py = 0; py < BOARD_SCREEN_ROWS * 8; py++) {
-      const yPos = py * PIXEL_PITCH;
-      for (let px = 0; px < BOARD_SCREEN_COLS * 8; px++) {
-        ctx.fillRect(px * PIXEL_PITCH, yPos, PIXEL_SIZE, PIXEL_SIZE);
+    const substrate = getSubstrateCanvas(tint);
+    if (substrate) {
+      ctx.drawImage(substrate, 0, 0);
+    } else {
+      const palette = OLED_TINT_CONFIG[tint];
+      ctx.fillStyle = palette.bg;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = palette.off;
+      for (let py = 0; py < BOARD_SCREEN_ROWS * 8; py++) {
+        const yPos = py * PIXEL_PITCH;
+        for (let px = 0; px < BOARD_SCREEN_COLS * 8; px++) {
+          ctx.fillRect(px * PIXEL_PITCH, yPos, PIXEL_SIZE, PIXEL_SIZE);
+        }
       }
     }
 
     if (!buffer || buffer.length === 0) return;
 
-    // Pass 1: subtle phosphor bloom for lit pixels (per-cell color aware)
+    // Pass 1: subtle phosphor bloom for lit pixels (per-cell & per-quadrant color aware)
     for (let row = 0; row < BOARD_SCREEN_ROWS; row++) {
       for (let col = 0; col < BOARD_SCREEN_COLS; col++) {
         const packed = buffer[row * BOARD_SCREEN_COLS + col] ?? 0;
-        const glyph = resolveGlyphBitmap(packed);
-        if (!glyph) continue;
-        ctx.fillStyle = resolveCellVisual(packed, tint).glow;
         const baseX = col * 8;
         const baseY = row * 8;
+        const colorQuads = decodeColorQuadrants(packed);
+        if (colorQuads) {
+          for (let q = 0; q < 4; q++) {
+            const cid = colorQuads[q];
+            if (cid === 0) continue;
+            const paletteIdx = QUADRANT_COLOR_PALETTE[cid] ?? 0;
+            ctx.fillStyle = resolvedPalette.glow[paletteIdx] ?? resolvedPalette.glow[0];
+            const [qx, qy] = QUADRANT_OFFSETS[q];
+            for (let gy = 0; gy < 4; gy++) {
+              const py = (baseY + qy + gy) * PIXEL_PITCH - 1;
+              for (let gx = 0; gx < 4; gx++) {
+                ctx.fillRect((baseX + qx + gx) * PIXEL_PITCH - 1, py, PIXEL_SIZE + 2, PIXEL_SIZE + 2);
+              }
+            }
+          }
+          continue;
+        }
+        const glyph = resolveGlyphBitmap(packed);
+        if (!glyph) continue;
+        ctx.fillStyle = resolveCellVisual(packed, tint, resolvedPalette.hex, resolvedPalette.glow).glow;
         for (let gy = 0; gy < 8; gy++) {
           const bits = glyph[gy];
           if (!bits) continue;
@@ -261,11 +349,28 @@ export function OledScreen({
     for (let row = 0; row < BOARD_SCREEN_ROWS; row++) {
       for (let col = 0; col < BOARD_SCREEN_COLS; col++) {
         const packed = buffer[row * BOARD_SCREEN_COLS + col] ?? 0;
-        const glyph = resolveGlyphBitmap(packed);
-        if (!glyph) continue;
-        ctx.fillStyle = resolveCellVisual(packed, tint).lit;
         const baseX = col * 8;
         const baseY = row * 8;
+        const colorQuads = decodeColorQuadrants(packed);
+        if (colorQuads) {
+          for (let q = 0; q < 4; q++) {
+            const cid = colorQuads[q];
+            if (cid === 0) continue;
+            const paletteIdx = QUADRANT_COLOR_PALETTE[cid] ?? 0;
+            ctx.fillStyle = resolvedPalette.hex[paletteIdx] ?? resolvedPalette.hex[0];
+            const [qx, qy] = QUADRANT_OFFSETS[q];
+            for (let gy = 0; gy < 4; gy++) {
+              const py = (baseY + qy + gy) * PIXEL_PITCH;
+              for (let gx = 0; gx < 4; gx++) {
+                ctx.fillRect((baseX + qx + gx) * PIXEL_PITCH, py, PIXEL_SIZE, PIXEL_SIZE);
+              }
+            }
+          }
+          continue;
+        }
+        const glyph = resolveGlyphBitmap(packed);
+        if (!glyph) continue;
+        ctx.fillStyle = resolveCellVisual(packed, tint, resolvedPalette.hex, resolvedPalette.glow).lit;
         for (let gy = 0; gy < 8; gy++) {
           const bits = glyph[gy];
           if (!bits) continue;
@@ -282,7 +387,7 @@ export function OledScreen({
         }
       }
     }
-  }, [buffer, tint, paletteVersion]);
+  }, [buffer, tint, resolvedPalette]);
 
   return (
     <div className="oled-bezel" data-tint={tint}>
@@ -292,7 +397,7 @@ export function OledScreen({
         width={CANVAS_W}
         height={CANVAS_H}
         role="img"
-        aria-label={ariaLabel ?? '16×8 Monochrome OLED Display (128×64)'}
+        aria-label={ariaLabel ?? '16×8 Color OLED Display (128×64)'}
       />
     </div>
   );

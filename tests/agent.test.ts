@@ -185,10 +185,12 @@ function expectBadResponse(fn: () => unknown) {
 describe('预置案例', () => {
   const runtime = createAgentRuntime({ llm: createStubLLM({}).llm, engine: createStubEngine({}) });
 
-  it('提供 5 个零 Token 案例，字段完整且互不重复', () => {
-    expect(runtime.presets).toHaveLength(5);
-    expect(new Set(runtime.presets.map((p) => p.id)).size).toBe(5);
+  it('提供 7 个零 Token 案例，字段完整且互不重复', () => {
+    expect(runtime.presets).toHaveLength(7);
+    expect(new Set(runtime.presets.map((p) => p.id)).size).toBe(7);
     expect(runtime.presets.some((p) => p.id === 'password-lock')).toBe(false);
+    expect(runtime.presets.some((p) => p.id === 'tetris')).toBe(true);
+    expect(runtime.presets.some((p) => p.id === 'rgb-cube')).toBe(true);
     for (const preset of runtime.presets) {
       expect(preset.name.length).toBeGreaterThan(0);
       expect(preset.prompt.length).toBeGreaterThan(0);

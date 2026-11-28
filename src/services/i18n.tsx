@@ -348,16 +348,16 @@ const PRESET_EN_OVERLAYS: Record<string, PresetOverlay> = {
     },
   },
   snake: {
-    name: 'OLED Snake Game',
-    prompt: 'Build a Snake game on the 16×8 monochrome OLED controlled by KEY0-KEY3 (WASD / Arrow keys), growing and scoring on food, with GAME OVER on collision',
-    category: 'OLED Game',
+    name: 'Color OLED Snake',
+    prompt: 'Build a color Snake game on the 16×8 256-color OLED controlled by KEY0-KEY3 (WASD / Arrow keys), growing and scoring on food, with GAME OVER on collision',
+    category: '256-Color Game',
     blueprint: {
-      title: '16×8 OLED Snake Game',
-      summary: 'Playable Snake on the 16×8 monochrome OLED: KEY0–KEY3 (WASD / Arrows) steer Up/Down/Left/Right, eating food grows the snake and increments BCD score.',
+      title: '16×8 Color OLED Snake',
+      summary: 'Playable 256-color Snake on the 16×8 OLED: green head, cyan body, red food, KEY0–KEY3 (WASD / Arrows) steering and BCD score.',
       behaviors: [
-        'Clears OLED on reset, spawns a 3-segment snake at (6,3) moving right, and places initial food at (10,3)',
+        'Clears OLED on reset, spawns a 3-segment snake at (6,3) moving right, and places red food at (10,3)',
         'Samples KEY0(Up/W), KEY1(Down/S), KEY2(Left/A), KEY3(Right/D) every cycle while blocking 180-degree reversal',
-        'Uses flicker-free delta rendering (updates only new head, old head, and old tail)',
+        'Uses flicker-free delta rendering with screen_color[7:0] (green head, cyan body, red food, amber text)',
         'Eating food increments snake length and 7-segment BCD score, then spawns new food off the snake body via LFSR',
         'Wall or self collision clears the OLED to display GAME OVER until reset via RST (R)',
       ],
@@ -367,7 +367,7 @@ const PRESET_EN_OVERLAYS: Record<string, PresetOverlay> = {
         { port: 'key[2]', role: 'Steer Left (A / ←)' },
         { port: 'key[3]', role: 'Steer Right (D / →)' },
         { port: 'rst_n', role: 'Hardware reset / restart (R)' },
-        { port: 'screen_x/y/data/cmd', role: '16×8 monochrome OLED write & clear ports' },
+        { port: 'screen_x/y/data/cmd/color', role: '16×8 256-color OLED write, color & clear ports' },
         { port: 'seg[7:0]', role: '2-digit BCD score' },
         { port: 'tone[3:0]', role: 'Turn, eat, and collision tones' },
       ],
@@ -387,6 +387,89 @@ const PRESET_EN_OVERLAYS: Record<string, PresetOverlay> = {
       17: 'Eat food at (10,3): score +1 and chime tone',
       20: 'Press KEY1 (Down / S) to latch downward turn',
       21: 'Turn downward to (10,4)',
+    },
+  },
+  tetris: {
+    name: 'Color Tetris',
+    prompt: 'Build a Color Tetris game on the 16×8 256-color OLED with 7 classic colored tetrominoes, WASD/arrow controls for move/rotate/drop, line clear, NEXT preview, and 7-seg score',
+    category: '256-Color Game',
+    blueprint: {
+      title: '16×8 Color Tetris',
+      summary: 'Complete Color Tetris on the 16×8 256-color OLED: 7 classic colored tetrominoes, wall-kick rotation, line clearing, live colored NEXT preview, and BCD scoring.',
+      behaviors: [
+        '8×8 playfield bordered by dark gray walls plus right-side HUD showing colored NEXT preview, LINE count, and PLAY/OVER status',
+        '7 classic tetrominoes each use distinct 256-color palette hues (I cyan, O yellow, T purple, L orange, J blue, S green, Z red)',
+        'KEY2(A/←) Left, KEY3(D/→) Right, KEY0(W/↑) Rotate with wall-kick, KEY1(S/↓) Soft Drop, SW0 doubles gravity speed',
+        'Flicker-free delta renderer refreshes only changed cells; locking full rows clears lines, drops upper blocks, and increments BCD score & buzzer chime',
+        'Spawn collision triggers GAME OVER (red light & red OVER label) until reset via RST (R)',
+      ],
+      pinMappings: [
+        { port: 'key[0]', role: 'Rotate clockwise (W / ↑, with wall-kick)' },
+        { port: 'key[1]', role: 'Soft drop (S / ↓)' },
+        { port: 'key[2]', role: 'Move left (A / ←)' },
+        { port: 'key[3]', role: 'Move right (D / →)' },
+        { port: 'sw[0]', role: 'Fast gravity switch' },
+        { port: 'rst_n', role: 'Hardware reset / restart (R)' },
+        { port: 'screen_x/y/data/cmd/color', role: '16×8 256-color OLED display & color ports' },
+        { port: 'seg[15:0]', role: 'Score (upper 2 digits) & lines (lower 2 digits)' },
+        { port: 'tone[3:0]', role: 'Move, rotate, lock, line-clear, and game-over tones' },
+      ],
+      mermaidFsm: `stateDiagram-v2
+    [*] --> ST_PLAY
+    ST_PLAY --> ST_PLAY: Move / Rotate / Drop
+    ST_PLAY --> ST_CLEAR: Piece locks
+    ST_CLEAR --> ST_CLEAR: Clear full row & score
+    ST_CLEAR --> ST_PLAY: Spawn next piece
+    ST_CLEAR --> ST_OVER: Spawn blocked
+    ST_OVER --> ST_PLAY: rst_n=0 restart`,
+    },
+    vectorNotes: {
+      0: 'Reset clears OLED and spawns purple T-piece at top',
+      1: 'Draw T-piece top cell (4,0)',
+      4: 'Complete initial 4-cell T-piece',
+      5: 'Press KEY3 (D / →) to shift right with move tone',
+      8: 'Press KEY0 (W / ↑) to rotate clockwise 90°',
+      10: 'Press KEY1 (S / ↓) for soft drop',
+    },
+  },
+  'rgb-cube': {
+    name: '256-Color RGB Cube Showcase',
+    prompt: 'Build a 256-color RGB cube gradient visual demo on the 16×8 OLED with SW[1:0] switching between RGB Cube Flow, Rainbow Spectrum, Neon Plasma, and Full 256-Color Grid',
+    category: '256-Color Visual',
+    blueprint: {
+      title: '256-Color RGB Cube Showcase',
+      summary: 'Showcases the 6×6×6 RGB color cube (indices 16–231) and full 256-color palette on the 16×8 OLED across 4 switchable live visual modes.',
+      behaviors: [
+        'Mode 0 (SW[1:0]=00): 6×6×6 RGB Cube Flow computing 16 + 36r + 6g + b via seamless 16-step triangle waves',
+        'Mode 1 (SW[1:0]=01): 16-column Rainbow Spectrum Bars with bright white peak caps',
+        'Mode 2 (SW[1:0]=10): 2D diagonal Neon Plasma interference combining solid and checkerboard tiles',
+        'Mode 3 (SW[1:0]=11): Full 256-Color Swatch Grid (SW2 toggles pages 0–127 and 128–255)',
+        'KEY0 pauses/resumes phase, KEY1 shifts hue, KEY2/KEY3 step phase manually; 7-seg displays mode, phase, and live hex color index',
+      ],
+      pinMappings: [
+        { port: 'sw[1:0]', role: 'Visual mode (00 Cube Flow / 01 Spectrum / 10 Plasma / 11 256-Color Grid)' },
+        { port: 'sw[2]', role: 'Swatch grid page (0 = 0–127, 1 = 128–255)' },
+        { port: 'key[0]', role: 'Pause / Resume animation (W / ↑)' },
+        { port: 'key[1]', role: 'Shift hue palette (S / ↓)' },
+        { port: 'key[2]', role: 'Step phase backward (A / ←)' },
+        { port: 'key[3]', role: 'Step phase forward (D / →)' },
+        { port: 'screen_x/y/data/cmd/color', role: '16×8 256-color OLED scan & RGB cube color ports' },
+        { port: 'seg[15:0]', role: 'Mode + phase + current hex color index' },
+      ],
+      mermaidFsm: `stateDiagram-v2
+    [*] --> MODE_CUBE
+    MODE_CUBE --> MODE_SPECTRUM: sw[1:0]=01
+    MODE_SPECTRUM --> MODE_PLASMA: sw[1:0]=10
+    MODE_PLASMA --> MODE_SWATCH: sw[1:0]=11
+    MODE_SWATCH --> MODE_CUBE: sw[1:0]=00`,
+    },
+    vectorNotes: {
+      0: 'Reset clears OLED into Mode 0 (RGB Cube Flow)',
+      1: 'Write RGB cube pixel at (0,0)',
+      4: 'Switch to Mode 3 (Full 256-Color Grid), LED3 on',
+      5: 'Press KEY0 to pause animation, traffic turns yellow',
+      6: 'Switch to Mode 1 (Rainbow Spectrum) while paused',
+      7: 'Press KEY0 again to resume in Mode 2 (Neon Plasma)',
     },
   },
 };

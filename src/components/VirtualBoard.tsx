@@ -94,11 +94,12 @@ function Momentary({ name, shortcut, pressed, disabled, onPress }: {
   </button>;
 }
 
-export function VirtualBoard({ inputs, outputs, onInputsChange, disabled = false }: {
+export function VirtualBoard({ inputs, outputs, onInputsChange, disabled = false, hideKeys = false }: {
   inputs: BoardInputs;
   outputs?: BoardOutputs;
   onInputsChange: (inputs: BoardInputs) => void;
   disabled?: boolean;
+  hideKeys?: boolean;
 }) {
   const inputsRef = useRef(inputs);
   inputsRef.current = inputs;
@@ -130,7 +131,7 @@ export function VirtualBoard({ inputs, outputs, onInputsChange, disabled = false
   }, [syncPressedInputs]);
 
   useEffect(() => {
-    if (disabled) {
+    if (disabled || hideKeys) {
       pointerHeldRef.current = { keyMask: 0, rst: false };
       releaseAllKeyboard();
       return;
@@ -183,7 +184,7 @@ export function VirtualBoard({ inputs, outputs, onInputsChange, disabled = false
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       releaseAllKeyboard();
     };
-  }, [disabled, releaseAllKeyboard, syncPressedInputs]);
+  }, [disabled, hideKeys, releaseAllKeyboard, syncPressedInputs]);
 
   function setPointerKey(index: number, down: boolean) {
     pointerHeldRef.current.keyMask = down
@@ -220,36 +221,40 @@ export function VirtualBoard({ inputs, outputs, onInputsChange, disabled = false
         </div>
         <output className="seven-seg" aria-label={L('数码管读数', '7-segment display')}>{digits}</output>
       </div>
-      <div className="board-keybank" role="group" aria-label={L('板卡按键', 'Board keys')}>
-        {[0, 1, 2, 3].map((index) => (
-          <Momentary
-            key={index}
-            name={`KEY${index}`}
-            shortcut={KEY_SHORTCUTS[index]}
-            pressed={bit(inputs.key, index)}
-            disabled={disabled}
-            onPress={(down) => setPointerKey(index, down)}
-          />
-        ))}
-        <Momentary
-          name="RST"
-          shortcut="R"
-          pressed={inputs.rst_n === 0}
-          disabled={disabled}
-          onPress={setPointerRst}
-        />
-      </div>
-      <p className="board-shortcut-hint">
-        {locale === 'en' ? (
-          <>
-            Shortcuts: <kbd>1</kbd>–<kbd>4</kbd> for KEY0–KEY3 (multi-key), <kbd>R</kbd> for RST
-          </>
-        ) : (
-          <>
-            快捷键：<kbd>1</kbd>–<kbd>4</kbd> 按 KEY0–KEY3（可多键同按），<kbd>R</kbd> 按 RST
-          </>
-        )}
-      </p>
+      {!hideKeys && (
+        <>
+          <div className="board-keybank" role="group" aria-label={L('板卡按键', 'Board keys')}>
+            {[0, 1, 2, 3].map((index) => (
+              <Momentary
+                key={index}
+                name={`KEY${index}`}
+                shortcut={KEY_SHORTCUTS[index]}
+                pressed={bit(inputs.key, index)}
+                disabled={disabled}
+                onPress={(down) => setPointerKey(index, down)}
+              />
+            ))}
+            <Momentary
+              name="RST"
+              shortcut="R"
+              pressed={inputs.rst_n === 0}
+              disabled={disabled}
+              onPress={setPointerRst}
+            />
+          </div>
+          <p className="board-shortcut-hint">
+            {locale === 'en' ? (
+              <>
+                Shortcuts: <kbd>1</kbd>–<kbd>4</kbd> for KEY0–KEY3 (multi-key), <kbd>R</kbd> for RST
+              </>
+            ) : (
+              <>
+                快捷键：<kbd>1</kbd>–<kbd>4</kbd> 按 KEY0–KEY3（可多键同按），<kbd>R</kbd> 按 RST
+              </>
+            )}
+          </p>
+        </>
+      )}
       <div className="board-row">
         <span>LED[7:0]</span>
         <div className="led-bank" role="group" aria-label={L('发光二极管', 'LED bank')}>

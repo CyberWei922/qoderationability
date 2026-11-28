@@ -27,12 +27,20 @@ export const BOARD_PORT_SPEC = `虚拟 FPGA 开发板顶层接口（模块名必
 module top (
     input         clk,      // 板载时钟，每个上升沿前进一拍
     input         rst_n,    // 低有效复位：0=复位，1=正常工作
-    input  [3:0]  key,      // bit0=KEY0 ... bit3=KEY3，按下为 1，松开为 0
+    input  [3:0]  key,      // bit0=KEY0(上/W) ... bit3=KEY3(右/D)，按下为 1，松开为 0
     input  [7:0]  sw,       // 8 个拨码开关，bit0=SW0 ... bit7=SW7
     output [7:0]  led,      // bit0=LED0 ... bit7=LED7
     output [2:0]  traffic,  // bit2=红灯，bit1=黄灯，bit0=绿灯
     output [15:0] seg       // 4 个 4 位数字，高位组在左边
-);`;
+);
+可选扩展外设端口（仅当需求涉及蜂鸣器或 16×8 屏幕时追加声明，普通电路不要画蛇添足）：
+- 蜂鸣器：output [3:0] tone（0=静音，1..15=音阶/提示音）
+- 16×8 屏幕（启用屏幕时必须完整声明前 4 个端口）：
+  output [3:0] screen_x,    // 列 0..15
+  output [2:0] screen_y,    // 行 0..7
+  output [7:0] screen_data, // 0x00=空，0x20..0x7E=ASCII，0x80=实心块 0x81=空心框 0x82=圆球 0x83=蛇头 0x84=蛇身 0x85=食物 0x86=砖块 0x87=挡板 0x88=障碍 0x89=飞船 0x8A=爱心 0x8B=星星 0x8C..0x8F=上下左右箭头 0x90..0x94=网格/半高块 0xA1..0xAF=2×2实心4×4子块(低4位TL/TR/BL/BR)
+  output [1:0] screen_cmd,  // 2'b00=保持，2'b01=写入(x,y)，2'b10=清屏，2'b11=清屏并写入
+  output [7:0] screen_color // （可选）256 色调色板索引：0=默认单色荧光，1红 2琥珀 3青 4品红 5白 6蓝 7紫 8绿 9橙 10蒂芙尼 11粉 12黄 13天蓝 14灰 15暗绿，16..231=6×6×6 RGB色立方(16+36*r+6*g+b，r/g/b∈0..5)，232..255=灰阶`;
 
 export const TEST_VECTOR_SPEC = `自测向量 TestVectorStep 规则：
 - cycle 必须等于数组下标（从 0 开始），每个向量执行一个时钟上升沿；
@@ -49,10 +57,10 @@ export const VERILOG_SUBSET_SPEC = `只允许可综合 Verilog 教学子集：
 - assign 连续赋值；
 - always @(*) 或 always_comb 组合块：必须全部使用阻塞赋值 =，每个分支都要给块内所有输出赋值，禁止推断 latch；
 - always @(posedge clk) 或 always @(posedge clk or negedge rst_n) 时序块：必须全部使用非阻塞赋值 <=，所有寄存器都要在复位分支中赋确定值；
-- 语句：if / else if / else、case / default；
+- 语句：if / else if / else、case / default、静态界限 for 循环（循环次数 <= 256）以及 1D/2D reg 数组（如 reg [7:0] mem [0:15]）；
 - 运算符：算术 + - *；按位 & | ^ ~；逻辑 && || !；比较 == != < <= > >=；移位 << >> >>>；三目 ? :；位拼接 {} 与位切片 sig[hi:lo]；
 - 字面量：4'b1010、8'hFF、3'd5、十进制整数；
-- 禁止：initial、forever、#延迟、task/function、数组/多维数组、for/while、除法/取模、generate、include、宏定义、模块实例化；
+- 禁止：initial、forever、#延迟、task/function、while、除法/取模、generate、include、宏定义、模块实例化；
 - 需要十进制进位时用 BCD 计数（每位 0..9 单独寄存），不要用除法/取模。`;
 
 const JSON_ONLY = '只输出一个 JSON 对象，不要输出 Markdown 代码围栏、注释或额外解释。JSON 字符串内的 Verilog 代码用 \\n 换行。';

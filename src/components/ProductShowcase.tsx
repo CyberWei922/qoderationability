@@ -274,7 +274,7 @@ export function ProductShowcase({
         ref={topbarRef}
         className="showcase-topbar"
         data-interactive={topbarInteractive ? 'true' : 'false'}
-        aria-hidden={!topbarInteractive}
+        inert={!topbarInteractive}
       >
         <div className="showcase-topbar-left">
           <button

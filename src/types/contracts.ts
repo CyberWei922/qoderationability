@@ -312,6 +312,7 @@ export interface PresetProject {
   boardHint?: 'traffic' | 'lock' | 'counter' | 'general' | 'display' | 'arcade';
   boardProfileId?: BoardProfileId;           // V3 可选：推荐切换的板卡配置方案
   requiredPeripherals?: BoardPeripheralId[]; // V3 可选：该案例实际依赖的板卡外设清单
+  recommendedClockSpeed?: 'turbo' | 'fast' | 'realtime' | 'slow';
 }
 
 // ============================================================

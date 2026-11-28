@@ -132,6 +132,56 @@ export function makeSnakeBugs(fixedCode: string): BugClinicCase[] {
   ];
 }
 
+/** 彩色俄罗斯方块：右移边界检查失效，导致方块越界不响应。 */
+export function makeTetrisBugs(fixedCode: string): BugClinicCase[] {
+  const buggyCode = replaceOnce(
+    fixedCode,
+    'else if (key_r) begin',
+    "else if (1'b0) begin",
+    'tetris-no-right',
+  );
+  return [
+    {
+      id: 'tetris-no-right',
+      title: '隐蔽故障：右移分支被屏蔽，按 D / → 无法向右移动',
+      pitfallTag: 'input-masked',
+      symptom: '按下 KEY3（D / →）后方块保持在原列不动，无法横向平移对准空位',
+      buggyCode,
+      diagnosis: {
+        level1Hint: '检查组合逻辑中生成平移候选坐标的分支，右移按键信号真的进入判定了吗？',
+        level2Cause: "右移分支条件被误改为 1'b0，导致 KEY3 触发的 key_r 信号始终被忽略。",
+        level3PatchCode: fixedCode,
+        highlightLine: lineOf(buggyCode, "else if (1'b0) begin"),
+      },
+    },
+  ];
+}
+
+/** 256 色 RGB 立方渐变秀：写屏命令恒为 00，屏幕停在黑屏。 */
+export function makeRgbCubeBugs(fixedCode: string): BugClinicCase[] {
+  const buggyCode = replaceOnce(
+    fixedCode,
+    "screen_cmd   <= 2'b01;",
+    "screen_cmd   <= 2'b00;",
+    'rgb-cube-no-write',
+  );
+  return [
+    {
+      id: 'rgb-cube-no-write',
+      title: '隐蔽故障：screen_cmd 写使能恒为 00，屏幕无彩色输出',
+      pitfallTag: 'write-disabled',
+      symptom: '数码管色号在持续跳动，但 16×8 彩色 OLED 屏幕始终保持黑屏',
+      buggyCode,
+      diagnosis: {
+        level1Hint: '对比数码管与屏幕端口：坐标与色号在推进，但屏幕收到写命令了吗？',
+        level2Cause: "扫描循环中将 screen_cmd 误赋值为 2'b00（保持），改为 2'b01 即可逐格写入彩色显存。",
+        level3PatchCode: fixedCode,
+        highlightLine: lineOf(buggyCode, "screen_cmd   <= 2'b00;"),
+      },
+    },
+  ];
+}
+
 /** 运行时故障注入：交给大模型生成一个隐蔽 Bug（inject_bug 动作）。 */
 export async function requestInjectedBug(
   llm: LLMClient,

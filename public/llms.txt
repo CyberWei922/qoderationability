@@ -1,0 +1,89 @@
+# FPGAgent
+
+> 用自然语言编写并仿真数字电路的 AI Agent。浏览器内的 FPGA 虚拟实验室，无需开发板，无需安装 Vivado。
+
+## 入口
+
+- [官网 / Web App](https://fpgagent-6u1flr9gzif.qoder.zone/)
+- [产品介绍页](https://fpgagent-6u1flr9gzif.qoder.zone/#/intro)
+- [GitHub 源码](https://github.com/CyberWei922/FPGAgent)
+- [站点地图](https://fpgagent-6u1flr9gzif.qoder.zone/sitemap.xml)
+
+- 参赛赛道: 2026 Qoder 高校创造力大赛 · StudyHack 学习科研
+- 最后更新: 2026-11-28
+
+## 它是什么
+
+FPGAgent 面向 FPGA 与数字电路学习者。用户用中文或英文描述电路需求，例如「做一个智能交通灯」，
+AI 智能体自动完成蓝图规划、可综合 Verilog 编写、静态 Lint、确定性自测与自动修复，
+最后在浏览器里以门级网表慢动作动画展示信号如何逐级穿过逻辑门，并点亮虚拟 FPGA 开发板。
+
+它解决三个学习痛点：
+
+1. 没有开发板、安装 Vivado 成本高。
+2. 写完 Verilog 不知道对错，缺少可解释的波形与门级信号。
+3. 大模型生成的代码不可综合或无法验证。
+
+## 五步使用
+
+1. 打开官网，点击「做一个智能交通灯」或「彩色 OLED 贪吃蛇」预设（无需 API Key）。
+2. 查看 AI 生成的蓝图、Verilog 源码与自测断言。
+3. 在门级画布观察信号逐级传播与慢动作电流。
+4. 切换「屏幕」查看 16×8 OLED 输出，或在虚拟板卡上按按键、拨拨码。
+5. 继续用自然语言提修改需求，AI 重新生成、Lint、自测并上板。
+
+## 技术事实
+
+- 纯 TypeScript 实现 Verilog 解析器、AST、Elaboration、静态 Lint、门级网表提取与周期仿真。
+- 支持组合逻辑、时序逻辑、有限状态机、1D/2D 定长寄存器数组、OLED 显存与蜂鸣器外设。
+- 确定性自测：同一份代码与测试向量在浏览器中可复现，失败会回到修复循环。
+- 284 条 Vitest 测试通过，3 条真实模型评测默认跳过（需要 EVAL_REAL=1）。
+- 前端 React 19 + TypeScript + Vite，部署在 Qoder Sites，LLM 调用经 Edge Function 代理。
+- 七个零 Token 内置案例，覆盖交通灯、1011 序列检测器、数字秒表、四人抢答器、OLED 贪吃蛇、俄罗斯方块与 256 色 RGB 立方。
+
+## 架构
+
+```text
+自然语言
+  │
+  ▼
+Agent Runtime（Harness 状态机：规划 → 生成 → Lint → 自测 → 修复）
+  │
+  ├── Blueprint 蓝图
+  ├── Verilog 源码
+  │
+  ▼
+RTL Engine（浏览器内纯 TypeScript）
+  ├── Parser / AST / Elaboration
+  ├── Static Linter
+  ├── Deterministic Self-Test
+  ├── Gate-Level Netlist
+  └── Cycle Simulator
+  │
+  ▼
+可视化（门级画布 / 波形 / OLED / 虚拟板卡 / 蜂鸣器）
+```
+
+## 适合谁
+
+- 学习数字电路与 Verilog 的本科生、研究生。
+- 想快速验证 FPGA 小设计但没有开发板的开发者。
+- 想了解 AI Agent 如何做「生成 → 验证 → 修复」闭环的工程师。
+- 想在课堂演示中直观看到门级信号流动的教师。
+
+## 限制
+
+- 这是教学与原型验证工具，不是 Vivado / Quartus 的替代品，不产出比特流。
+- 支持的是教学子集，不覆盖完整 SystemVerilog、IP 核与厂商原语。
+- 真实模型生成质量取决于所配置的 OpenAI 兼容模型；内置案例不依赖模型。
+
+## 团队与分工
+
+- 队长：全栈统筹、板卡配置与大屏 UI、按项目限流、Qoder Sites 部署。
+- 队友 1：RTL 仿真引擎（数组、显存/蜂鸣器外设、批量步进）。
+- 队友 2：AI 智能体（板卡感知 Prompt、旗舰案例、真实模型评测）。
+
+## 更多
+
+- [项目介绍](https://fpgagent-6u1flr9gzif.qoder.zone/#/intro)
+- [源码与文档](https://github.com/CyberWei922/FPGAgent)

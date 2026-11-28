@@ -2,6 +2,7 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
+  ChevronRight,
   CircleDashed,
   Copy,
   Download,
@@ -31,9 +32,13 @@ export interface CodeStreamState {
 export function BlueprintView({
   blueprint,
   planning = false,
+  selfTest,
+  onOpenVerify,
 }: {
   blueprint?: AgentBlueprint;
   planning?: boolean;
+  selfTest?: SelfTestResult;
+  onOpenVerify?: () => void;
 }) {
   const { L } = useI18n();
   if (planning && !blueprint) {
@@ -90,7 +95,25 @@ export function BlueprintView({
           </div>
         )}
         <header className="blueprint-doc-head">
-          <h2>{blueprint.title}</h2>
+          <div className="blueprint-doc-head-row">
+            <h2>{blueprint.title}</h2>
+            {selfTest && onOpenVerify && (
+              <button
+                type="button"
+                className={`blueprint-verify-pill mobile-only-verify-entry ${selfTest.passed ? 'ok' : 'fail'}`}
+                onClick={onOpenVerify}
+              >
+                {selfTest.passed ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                <span className="mono">
+                  {L(
+                    `自测 ${selfTest.passedChecks}/${selfTest.totalChecks}`,
+                    `Self-Test ${selfTest.passedChecks}/${selfTest.totalChecks}`,
+                  )}
+                </span>
+                <ChevronRight size={13} />
+              </button>
+            )}
+          </div>
           <p>{blueprint.summary}</p>
         </header>
 

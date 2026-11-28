@@ -603,14 +603,17 @@ export function lintVerilog(elaborated: ElaboratedModule): LintIssue[] {
   }
 
   const declaredScreenPorts = SCREEN_PORT_NAMES.filter((name) => declaredPorts.has(name));
-  if (declaredScreenPorts.length > 0 && declaredScreenPorts.length < SCREEN_PORT_NAMES.length) {
+  if (
+    (declaredScreenPorts.length > 0 || declaredPorts.has('screen_color')) &&
+    declaredScreenPorts.length < SCREEN_PORT_NAMES.length
+  ) {
     const missing = SCREEN_PORT_NAMES.filter((name) => !declaredPorts.has(name));
     issues.push({
       code: 'PORT_MISMATCH',
       severity: 'error',
       line: ast.loc.line,
       message: `启用 16×8 屏幕外设时缺少端口：${missing.join(', ')}`,
-      hint: '请同时声明完整的 4 个屏幕输出端口：screen_x[3:0], screen_y[2:0], screen_data[7:0], screen_cmd[1:0]。',
+      hint: '请同时声明完整的 4 个屏幕基础端口：screen_x[3:0], screen_y[2:0], screen_data[7:0], screen_cmd[1:0]（可选附加 screen_color[7:0] 启用 256 色）。',
     });
   }
 
@@ -622,7 +625,7 @@ export function lintVerilog(elaborated: ElaboratedModule): LintIssue[] {
         severity: 'error',
         line: portAst?.loc.line ?? ast.loc.line,
         message: `端口 "${portName}" 不在虚拟 FPGA 开发板标准接口中`,
-        hint: '请仅使用标准板卡端口：clk, rst_n, key[3:0], sw[7:0], led[7:0], traffic[2:0], seg[15:0]，以及可选端口 tone[3:0], screen_x[3:0], screen_y[2:0], screen_data[7:0], screen_cmd[1:0]。',
+        hint: '请仅使用标准板卡端口：clk, rst_n, key[3:0], sw[7:0], led[7:0], traffic[2:0], seg[15:0]，以及可选端口 tone[3:0], screen_x[3:0], screen_y[2:0], screen_data[7:0], screen_cmd[1:0], screen_color[7:0]。',
       });
     }
   }
